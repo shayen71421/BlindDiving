@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GravityFlip</title>
+    <link rel="stylesheet" href="./style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+</head>
+
+<body class="dark-theme">
+    <div id="app">
+        <div id="game-container"></div>
+
+        <div id="ui-overlay">
+            <div id="webcam-container">
+                <video id="webcam" autoplay playsinline></video>
+                <canvas id="landmark-overlay"></canvas>
+            </div>
+
+            <div id="top-bar">
+                <div id="score-display">Score: 0</div>
+                <div id="fps-display">FPS: 0</div>
+            </div>
+
+            <div id="calibration-menu" class="modal">
+                <div class="modal-content">
+                    <h1>GravityFlip Calibration</h1>
+                    <p>Blink naturally several times to calibrate sensitivity.</p>
+                    <div class="progress-bar">
+                        <div id="calibration-progress" class="progress"></div>
+                    </div>
+                    <p id="calibration-status">Initializing camera...</p>
+                    <button id="start-calibration" disabled>Wait for Camera</button>
+                    <p class="hint">Tip: If EAR stays 0, make sure your face is clearly visible.</p>
+                </div>
+            </div>
+
+            <div id="instructions-menu" class="modal hidden">
+                <div class="modal-content">
+                    <h1>How to Play</h1>
+                    <ul class="instruction-list">
+                        <li><strong>Blink</strong> your eyes to invert gravity.</li>
+                        <li>Avoid the <strong>Red Pillars</strong>.</li>
+                        <li>Score points by surviving as long as possible.</li>
+                    </ul>
+                    <button id="start-game">Start Game</button>
+                </div>
+            </div>
+
+            <div id="game-over-menu" class="modal hidden">
+                <div class="modal-content">
+                    <h1>GAME OVER</h1>
+                    <p>Final Score: <span id="final-score">0</span></p>
+                    <button id="restart-game">Try Again</button>
+                </div>
+            </div>
+
+            <div id="controls">
+                <div class="control-group">
+                    <label for="sensitivity-slider">Blink Sensitivity</label>
+                    <input type="range" id="sensitivity-slider" min="0.1" max="0.5" step="0.01" value="0.25">
+                </div>
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="toggle-landmarks" checked> Show Landmarks
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="/main.js"></script>
+</body>
+
+</html>
