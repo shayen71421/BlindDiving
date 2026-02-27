@@ -32,7 +32,13 @@ export class GravityGame {
             backgroundColor: '#0d0d0d',
             physics: {
                 default: 'arcade',
-                arcade: { gravity: { y: 1800 }, debug: false }
+                arcade: {
+                    gravity: { y: 1800 },
+                    debug: false,
+                    // More substeps = fewer tunneling gaps
+                    fixedStep: false,
+                    timeScale: 1
+                }
             },
             scene: {
                 create() { self._create(this); },
@@ -66,11 +72,16 @@ export class GravityGame {
 
         this.player = scene.physics.add.sprite(200, cx, 'player');
         this.player.setCollideWorldBounds(true);
-        this.player.setSize(28, 28);       // hitbox a touch smaller than sprite
+        this.player.setSize(28, 28);
         this.player.setOffset(4, 4);
+        // Cap falling speed so player can't tunnel through obstacles
+        this.player.setMaxVelocity(800, 900);
 
         // --- Obstacle group ---
         this.obstacles = scene.physics.add.group();
+
+        // Raise the overlap tolerance so fast objects still register hits
+        scene.physics.world.OVERLAP_BIAS = 16;
 
         // --- Spawn timer ---
         this.spawnTimer = scene.time.addEvent({
@@ -80,8 +91,9 @@ export class GravityGame {
             loop: true
         });
 
-        // --- Collision ---
-        scene.physics.add.overlap(
+        // Use collider (not overlap) — it resolves position properly and
+        // never skips fast-moving bodies the way overlap can
+        scene.physics.add.collider(
             this.player,
             this.obstacles,
             this._handleCollision,
@@ -133,10 +145,12 @@ export class GravityGame {
 
         const obs = this.obstacles.create(x, y, key);
         obs.setDisplaySize(obsW, obsH);
-        obs.setSize(obsW - 16, obsH - 16);        // inner hitbox is smaller
-        obs.setOffset(8, 8);
+        // Keep hitbox the same size as visual — no cheating tunneling path
+        obs.setSize(obsW, obsH);
+        obs.setOffset(0, 0);
         obs.setImmovable(true);
         obs.body.setAllowGravity(false);
+        // Move at a fixed velocity; don't let speed compound with score alone
         obs.setVelocityX(-speed);
     }
 
