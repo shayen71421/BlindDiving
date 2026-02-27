@@ -6,25 +6,33 @@ export class FaceTracker {
         this.canvas = canvasElement;
         this.ctx = canvasElement.getContext('2d');
         this.faceMesh = null;
-        this.results = null;
         this.showLandmarks = true;
 
         // Eye landmark indices (MediaPipe FaceMesh)
         this.LEFT_EYE = [362, 385, 387, 263, 373, 380];
         this.RIGHT_EYE = [33, 160, 158, 133, 153, 144];
 
-        // Eye state
+        // Thresholds & state
         this.blinkThreshold = 0.25;
-        this.isBlinking = false;
-        this.onBlink = null;
+        this.winkDiff = 0.06;       // how much one eye must be *lower* than the other to count as a wink
+
+        this.isBothBlinking = false;
+        this.isLeftWinking = false;
+        this.isRightWinking = false;
+
         this.lastEAR = 0;
+        this.lastLeftEAR = 0;
+        this.lastRightEAR = 0;
+
+        // Callbacks
+        this.onBlink = null;   // both eyes closed → gravity flip
+        this.onRightWink = null;   // right eye wink → shoot
+        this.onLeftWink = null;   // left eye wink (reserved)
     }
 
     async init() {
         this.faceMesh = new FaceMesh({
-            locateFile: (file) => {
-                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
-            }
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
         });
 
         this.faceMesh.setOptions({
@@ -36,15 +44,11 @@ export class FaceTracker {
 
         this.faceMesh.onResults((results) => {
             this.results = results;
-            this.detectBlink();
-            if (this.showLandmarks) {
-                this.drawLandmarks();
-            }
+            this.detectBlinks();
+            if (this.showLandmarks) this.drawLandmarks();
         });
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 640, height: 480 }
-        });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
         this.video.srcObject = stream;
 
         return new Promise((resolve) => {
@@ -64,64 +68,88 @@ export class FaceTracker {
         requestAnimationFrame(() => this.runDetection());
     }
 
-    // Eye Aspect Ratio (EAR) calculation
     getEAR(landmarks, eyeIndices) {
-        const p1 = landmarks[eyeIndices[0]];
-        const p2 = landmarks[eyeIndices[1]];
-        const p3 = landmarks[eyeIndices[2]];
-        const p4 = landmarks[eyeIndices[3]];
-        const p5 = landmarks[eyeIndices[4]];
-        const p6 = landmarks[eyeIndices[5]];
-
-        // Linear distances
-        const dist = (p, q) => Math.sqrt(Math.pow(p.x - q.x, 2) + Math.pow(p.y - q.y, 2));
-
-        const vertical1 = dist(p2, p6);
-        const vertical2 = dist(p3, p5);
-        const horizontal = dist(p1, p4);
-
-        return (vertical1 + vertical2) / (2.0 * horizontal);
+        const p = eyeIndices.map(i => landmarks[i]);
+        const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+        return (dist(p[1], p[5]) + dist(p[2], p[4])) / (2 * dist(p[0], p[3]));
     }
 
-    detectBlink() {
-        if (!this.results || !this.results.multiFaceLandmarks || this.results.multiFaceLandmarks.length === 0) return;
+    detectBlinks() {
+        if (!this.results?.multiFaceLandmarks?.length) return;
+        const lm = this.results.multiFaceLandmarks[0];
 
-        const landmarks = this.results.multiFaceLandmarks[0];
-        const leftEAR = this.getEAR(landmarks, this.LEFT_EYE);
-        const rightEAR = this.getEAR(landmarks, this.RIGHT_EYE);
+        const leftEAR = this.getEAR(lm, this.LEFT_EYE);
+        const rightEAR = this.getEAR(lm, this.RIGHT_EYE);
         const avgEAR = (leftEAR + rightEAR) / 2;
+
+        this.lastLeftEAR = leftEAR;
+        this.lastRightEAR = rightEAR;
         this.lastEAR = avgEAR;
 
-        if (avgEAR < this.blinkThreshold) {
-            if (!this.isBlinking) {
-                this.isBlinking = true;
-                if (this.onBlink) this.onBlink();
+        const T = this.blinkThreshold;
+
+        const leftClosed = leftEAR < T;
+        const rightClosed = rightEAR < T;
+
+        // --- Both eyes closed (blink) ---
+        if (leftClosed && rightClosed) {
+            if (!this.isBothBlinking) {
+                this.isBothBlinking = true;
+                this.onBlink?.();
             }
         } else {
-            this.isBlinking = false;
+            this.isBothBlinking = false;
+        }
+
+        // --- Right wink: right eye closed, left eye clearly open ---
+        const rightWink = rightClosed && leftEAR > T + this.winkDiff;
+        if (rightWink) {
+            if (!this.isRightWinking) {
+                this.isRightWinking = true;
+                this.onRightWink?.();
+            }
+        } else {
+            this.isRightWinking = false;
+        }
+
+        // --- Left wink: left eye closed, right eye clearly open ---
+        const leftWink = leftClosed && rightEAR > T + this.winkDiff;
+        if (leftWink) {
+            if (!this.isLeftWinking) {
+                this.isLeftWinking = true;
+                this.onLeftWink?.();
+            }
+        } else {
+            this.isLeftWinking = false;
         }
     }
 
     drawLandmarks() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        if (!this.results || !this.results.multiFaceLandmarks) return;
+        if (!this.results?.multiFaceLandmarks) return;
+        for (const lm of this.results.multiFaceLandmarks) {
+            const W = this.canvas.width;
+            const H = this.canvas.height;
 
-        for (const landmarks of this.results.multiFaceLandmarks) {
-            this.ctx.fillStyle = '#00ff00';
-            // Draw eyes only for performance and clarity
-            [...this.LEFT_EYE, ...this.RIGHT_EYE].forEach(idx => {
-                const p = landmarks[idx];
+            // Left eye - green
+            this.ctx.fillStyle = this.isLeftWinking ? '#ff0' : '#00ff00';
+            this.LEFT_EYE.forEach(i => {
                 this.ctx.beginPath();
-                this.ctx.arc(p.x * this.canvas.width, p.y * this.canvas.height, 2, 0, 2 * Math.PI);
+                this.ctx.arc(lm[i].x * W, lm[i].y * H, 2.5, 0, 2 * Math.PI);
+                this.ctx.fill();
+            });
+
+            // Right eye - cyan (lights up on wink)
+            this.ctx.fillStyle = this.isRightWinking ? '#ff0' : '#00ffff';
+            this.RIGHT_EYE.forEach(i => {
+                this.ctx.beginPath();
+                this.ctx.arc(lm[i].x * W, lm[i].y * H, 2.5, 0, 2 * Math.PI);
                 this.ctx.fill();
             });
         }
     }
 
-    setThreshold(val) {
-        this.blinkThreshold = val;
-    }
-
+    setThreshold(val) { this.blinkThreshold = parseFloat(val); }
     setShowLandmarks(val) {
         this.showLandmarks = val;
         if (!val) this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);

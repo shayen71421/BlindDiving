@@ -73,6 +73,10 @@ function setupListeners() {
         faceTracker.onBlink = () => {
             game.flipGravity();
         };
+
+        faceTracker.onRightWink = () => {
+            game.shoot();
+        };
     };
 
     restartBtn.onclick = () => {
