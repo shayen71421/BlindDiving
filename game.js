@@ -9,161 +9,188 @@ export class GravityGame {
         this.isGravityFlipped = false;
         this.lastEAR = 0;
         this.lastFlipTime = 0;
+        this.running = false;
     }
 
     init() {
+        if (this.game) {
+            this.game.destroy(true);
+        }
+
+        this.score = 0;
+        this.isGravityFlipped = false;
+        this.lastFlipTime = 0;
+        this.running = false;
+
+        const self = this;
+
         const config = {
             type: Phaser.AUTO,
             width: window.innerWidth,
             height: window.innerHeight,
             parent: this.containerId,
-            backgroundColor: '#0a0a0a',
+            backgroundColor: '#0d0d0d',
             physics: {
                 default: 'arcade',
-                arcade: {
-                    gravity: { y: 1500 },
-                    debug: false
-                }
+                arcade: { gravity: { y: 1800 }, debug: false }
             },
             scene: {
-                preload: this.preload,
-                create: this.create,
-                update: this.update
+                create() { self._create(this); },
+                update(time, delta) { self._update(this, delta); }
             }
         };
 
         this.game = new Phaser.Game(config);
-        this.game.gravityFlip = this;
     }
 
-    preload() { }
+    _create(scene) {
+        this.scene = scene;
+        this.running = true;
 
-    create() {
-        const self = this.game.gravityFlip;
-        const scene = this; // The Phaser Scene
+        const cx = scene.cameras.main.centerY;
+        const W = scene.scale.width;
+        const H = scene.scale.height;
 
-        self.player = scene.physics.add.sprite(200, scene.cameras.main.centerY, null);
-        self.player.setSize(30, 30);
-        self.player.setCollideWorldBounds(true);
+        // --- Player: use a filled rectangle game object as the physics sprite ---
+        // Draw it as a texture so physics + visual are the same rect
+        const pGfx = scene.add.graphics();
+        pGfx.fillStyle(0x3b82f6, 1);
+        pGfx.fillRoundedRect(0, 0, 36, 36, 8);
+        pGfx.lineStyle(2, 0xffffff, 1);
+        pGfx.strokeRoundedRect(1, 1, 34, 34, 8);
+        pGfx.fillStyle(0xffffff, 1);
+        pGfx.fillCircle(10, 12, 4);
+        pGfx.fillCircle(26, 12, 4);
+        pGfx.generateTexture('player', 36, 36);
+        pGfx.destroy();
 
-        self.playerGfx = scene.add.graphics();
-        self.obstacleGfx = scene.add.graphics();
+        this.player = scene.physics.add.sprite(200, cx, 'player');
+        this.player.setCollideWorldBounds(true);
+        this.player.setSize(28, 28);       // hitbox a touch smaller than sprite
+        this.player.setOffset(4, 4);
 
-        self.obstacles = scene.physics.add.group();
+        // --- Obstacle group ---
+        this.obstacles = scene.physics.add.group();
 
-        self.spawnTimer = scene.time.addEvent({
-            delay: 1500,
-            callback: self.spawnObstacle,
-            callbackScope: self,
+        // --- Spawn timer ---
+        this.spawnTimer = scene.time.addEvent({
+            delay: 1600,
+            callback: this._spawnObstacle,
+            callbackScope: this,
             loop: true
         });
 
-        scene.physics.add.overlap(self.player, self.obstacles, self.handleCollision, null, self);
+        // --- Collision ---
+        scene.physics.add.overlap(
+            this.player,
+            this.obstacles,
+            this._handleCollision,
+            null,
+            this
+        );
 
-        self.scoreText = document.getElementById('score-display');
-        self.fpsText = document.getElementById('fps-display');
+        // --- UI refs ---
+        this.scoreText = document.getElementById('score-display');
+        this.fpsText = document.getElementById('fps-display');
+
+        // --- Ground/ceiling visual lines ---
+        const lines = scene.add.graphics();
+        lines.lineStyle(2, 0x444444, 1);
+        lines.lineBetween(0, 0, W, 0);
+        lines.lineBetween(0, H - 1, W, H - 1);
     }
 
-    update(time, delta) {
-        const self = this.game.gravityFlip;
-        if (!self.player || !self.player.active) return;
+    _spawnObstacle() {
+        if (!this.running) return;
+        const scene = this.scene;
+        const H = scene.scale.height;
+        const W = scene.scale.width;
 
-        // Smooth rotation
-        const targetRotation = self.isGravityFlipped ? Math.PI : 0;
-        self.player.rotation = Phaser.Math.Angle.RotateTo(self.player.rotation, targetRotation, 0.1);
+        const obsH = Phaser.Math.Between(160, Math.min(420, H * 0.55));
+        const isCeiling = Phaser.Math.Between(0, 1) === 0;
+        const obsW = 56;
 
-        // Draw Player
-        self.playerGfx.clear();
-        self.drawPlayer();
+        // y is center of the rectangle
+        const y = isCeiling ? obsH / 2 : H - obsH / 2;
+        const x = W + obsW;
 
-        // Score
-        self.score += delta * 0.01;
-        if (self.scoreText) self.scoreText.innerText = `Score: ${Math.floor(self.score)}`;
+        // Speed based on score
+        const speed = 320 + this.score * 0.9;
 
-        const earVal = self.lastEAR ? self.lastEAR.toFixed(3) : '0.000';
-        if (self.fpsText) self.fpsText.innerText = `FPS: ${Math.round(this.game.loop.actualFps)} | EAR: ${earVal}`;
+        // Create obstacle as a physics-enabled image with a generated texture
+        const key = isCeiling ? 'obs_ceil' : 'obs_floor';
 
-        // Update Obstacles Graphics
-        self.obstacleGfx.clear();
-        self.obstacles.getChildren().forEach(obstacle => {
-            if (obstacle.x < -100) {
-                obstacle.destroy();
-            } else {
-                self.obstacleGfx.fillStyle(0xef4444, 1);
-                self.obstacleGfx.fillRoundedRect(
-                    obstacle.x - obstacle.displayWidth / 2,
-                    obstacle.y - obstacle.displayHeight / 2,
-                    obstacle.displayWidth,
-                    obstacle.displayHeight,
-                    4
-                );
-            }
+        // Generate texture once per type
+        if (!scene.textures.exists(key)) {
+            const g = scene.add.graphics();
+            g.fillStyle(0xcc2222, 1);
+            g.fillRoundedRect(0, 0, obsW, 600, 4);    // tall enough for any height
+            g.lineStyle(1, 0xff6666, 0.5);
+            g.strokeRoundedRect(0, 0, obsW, 600, 4);
+            g.generateTexture(key, obsW, 600);
+            g.destroy();
+        }
+
+        const obs = this.obstacles.create(x, y, key);
+        obs.setDisplaySize(obsW, obsH);
+        obs.setSize(obsW - 16, obsH - 16);        // inner hitbox is smaller
+        obs.setOffset(8, 8);
+        obs.setImmovable(true);
+        obs.body.setAllowGravity(false);
+        obs.setVelocityX(-speed);
+    }
+
+    _update(scene, delta) {
+        if (!this.running || !this.player || !this.player.active) return;
+
+        // Smooth player rotation
+        const target = this.isGravityFlipped ? Math.PI : 0;
+        this.player.rotation = Phaser.Math.Angle.RotateTo(this.player.rotation, target, 0.12);
+
+        // Clean up off-screen obstacles
+        this.obstacles.getChildren().forEach(obs => {
+            if (obs.x < -100) obs.destroy();
         });
 
-        // Difficulty
-        if (self.spawnTimer.delay > 600) {
-            self.spawnTimer.delay -= 0.1;
+        // Score
+        this.score += delta * 0.01;
+        if (this.scoreText) this.scoreText.innerText = `Score: ${Math.floor(this.score)}`;
+
+        const ear = this.lastEAR ? this.lastEAR.toFixed(3) : '0.000';
+        if (this.fpsText) {
+            this.fpsText.innerText = `FPS: ${Math.round(scene.game.loop.actualFps)} | EAR: ${ear}`;
+        }
+
+        // Ramp difficulty: tighten spawn interval
+        if (this.spawnTimer && this.spawnTimer.delay > 700) {
+            this.spawnTimer.delay = Math.max(700, this.spawnTimer.delay - 0.15);
         }
     }
 
-    drawPlayer() {
-        const { x, y, rotation } = this.player;
-        this.playerGfx.save();
-        this.playerGfx.translateCanvas(x, y);
-        this.playerGfx.rotateCanvas(rotation);
-
-        this.playerGfx.fillStyle(0x3b82f6, 1);
-        this.playerGfx.fillRoundedRect(-20, -20, 40, 40, 8);
-        this.playerGfx.lineStyle(2, 0xffffff, 1);
-        this.playerGfx.strokeRoundedRect(-20, -20, 40, 40, 8);
-
-        // Eyes
-        this.playerGfx.fillStyle(0xffffff, 1);
-        this.playerGfx.fillCircle(-8, -8, 4);
-        this.playerGfx.fillCircle(8, -8, 4);
-
-        this.playerGfx.restore();
-    }
-
-    spawnObstacle() {
-        const scene = this.game.scene.scenes[0];
-        const x = scene.scale.width + 100;
-        const height = Phaser.Math.Between(150, 400);
-        const isCeiling = Phaser.Math.Between(0, 1) === 0;
-        const y = isCeiling ? height / 2 : scene.scale.height - height / 2;
-
-        const obstacle = this.obstacles.create(x, y, null);
-        obstacle.setSize(40, height - 40); // Forgiving hitbox
-        obstacle.setDisplaySize(60, height);
-        obstacle.setImmovable(true);
-        obstacle.body.setAllowGravity(false);
-        obstacle.setVelocityX(-350 - (this.score * 1.0));
-    }
-
-    flipGravity() {
-        const currentTime = Date.now();
-        if (!this.game || !this.player || !this.player.active || (currentTime - this.lastFlipTime < 300)) return;
-
-        this.lastFlipTime = currentTime;
-        this.isGravityFlipped = !this.isGravityFlipped;
-        const scene = this.game.scene.scenes[0];
-        scene.physics.world.gravity.y = this.isGravityFlipped ? -2000 : 2000;
-
-        scene.cameras.main.shake(100, 0.005);
-        scene.cameras.main.flash(50, 59, 130, 246, 0.2);
-    }
-
-    handleCollision() {
+    _handleCollision() {
+        if (!this.running) return;
+        this.running = false;
         this.player.setActive(false).setVisible(false);
         this.spawnTimer.remove();
         this.obstacles.setVelocityX(0);
         if (this.onGameOver) this.onGameOver(Math.floor(this.score));
     }
 
+    flipGravity() {
+        const now = Date.now();
+        if (!this.running || !this.player?.active || now - this.lastFlipTime < 350) return;
+
+        this.lastFlipTime = now;
+        this.isGravityFlipped = !this.isGravityFlipped;
+
+        const grav = this.isGravityFlipped ? -2000 : 2000;
+        this.scene.physics.world.gravity.y = grav;
+
+        this.scene.cameras.main.shake(80, 0.004);
+        this.scene.cameras.main.flash(60, 59, 130, 246, 0.15);
+    }
+
     restart() {
-        this.score = 0;
-        this.isGravityFlipped = false;
-        const scene = this.game.scene.scenes[0];
-        scene.scene.restart();
+        this.init();
     }
 }
