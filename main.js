@@ -13,6 +13,7 @@ const restartBtn = document.getElementById('restart-game');
 const sensitivitySlider = document.getElementById('sensitivity-slider');
 const landmarkToggle = document.getElementById('toggle-landmarks');
 const progressLine = document.getElementById('calibration-progress');
+const calibCount = document.getElementById('calib-count');
 const statusText = document.getElementById('calibration-status');
 
 let faceTracker;
@@ -58,6 +59,7 @@ function setupListeners() {
             calibrationSteps++;
             const progress = (calibrationSteps / MAX_CALIBRATION_STEPS) * 100;
             progressLine.style.width = `${progress}%`;
+            if (calibCount) calibCount.innerText = `${calibrationSteps} / ${MAX_CALIBRATION_STEPS}`;
 
             if (calibrationSteps >= MAX_CALIBRATION_STEPS) {
                 clearInterval(calibrationInterval);
@@ -76,6 +78,10 @@ function setupListeners() {
 
         faceTracker.onRightWink = () => {
             game.shoot();
+        };
+
+        faceTracker.onLeftWink = () => {
+            game.boostSpeed();
         };
     };
 

@@ -136,7 +136,7 @@ export class GravityGame {
         const obsW = 56;
         const isCeiling = Phaser.Math.Between(0, 1) === 0;
         const y = isCeiling ? obsH / 2 : H - obsH / 2;
-        const speed = 320 + this.score * 0.9;
+        const speed = (320 + this.score * 0.9) * (this._speedMultiplier || 1);
 
         const obs = this.obstacles.create(W + obsW, y, 'obstacle');
         obs.setDisplaySize(obsW, obsH);
@@ -152,7 +152,7 @@ export class GravityGame {
         const H = scene.scale.height;
         const W = scene.scale.width;
         const y = Phaser.Math.Between(60, H - 60);
-        const speed = 240 + this.score * 0.6;
+        const speed = (240 + this.score * 0.6) * (this._speedMultiplier || 1);
 
         const enemy = this.enemies.create(W + 40, y, 'enemy');
         enemy.setSize(28, 28).setOffset(4, 4);
@@ -237,6 +237,28 @@ export class GravityGame {
         this.scene.physics.world.gravity.y = grav;
         this.scene.cameras.main.shake(80, 0.004);
         this.scene.cameras.main.flash(60, 59, 130, 246, 0.15);
+    }
+
+    boostSpeed() {
+        if (!this.running || !this.player?.active || this._boosting) return;
+        this._boosting = true;
+        this._speedMultiplier = 1.6;
+
+        // Visual flash — orange tint
+        this.scene.cameras.main.flash(120, 245, 158, 11, 0.18);
+
+        // Apply boost to all live obstacles and enemies
+        const applyBoost = (obj) => {
+            if (obj.body) obj.setVelocityX(obj.body.velocity.x * 1.6);
+        };
+        this.obstacles.getChildren().forEach(applyBoost);
+        this.enemies.getChildren().forEach(applyBoost);
+
+        // Reset after 2.5s
+        this.scene.time.delayedCall(2500, () => {
+            this._boosting = false;
+            this._speedMultiplier = 1;
+        });
     }
 
     restart() { this.init(); }

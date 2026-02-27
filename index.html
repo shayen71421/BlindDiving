@@ -3,74 +3,116 @@
 
 <head>
     <meta charset="UTF-8">
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="description"
+        content="GravityFlip – blink to flip gravity, wink to shoot. A webcam-powered browser game.">
     <title>GravityFlip</title>
     <link rel="stylesheet" href="./style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
 
-<body class="dark-theme">
+<body>
     <div id="app">
         <div id="game-container"></div>
 
         <div id="ui-overlay">
+            <!-- Top HUD -->
+            <div id="top-bar">
+                <div class="hud-chip" id="score-display">
+                    <span class="hud-icon">⭐</span> Score: 0
+                </div>
+                <div class="hud-chip" id="fps-display">
+                    <span class="hud-icon">📡</span> FPS: 0
+                </div>
+            </div>
+
+            <!-- Webcam preview -->
             <div id="webcam-container">
-                <video id="webcam" autoplay playsinline></video>
+                <div id="webcam-label">FACE CAM</div>
+                <video id="webcam" autoplay playsinline muted></video>
                 <canvas id="landmark-overlay"></canvas>
             </div>
 
-            <div id="top-bar">
-                <div id="score-display">Score: 0</div>
-                <div id="fps-display">FPS: 0</div>
-            </div>
-
-            <div id="calibration-menu" class="modal">
-                <div class="modal-content">
-                    <h1>GravityFlip Calibration</h1>
-                    <p>Blink naturally several times to calibrate sensitivity.</p>
-                    <div class="progress-bar">
-                        <div id="calibration-progress" class="progress"></div>
-                    </div>
-                    <p id="calibration-status">Initializing camera...</p>
-                    <button id="start-calibration" disabled>Wait for Camera</button>
-                    <p class="hint">Tip: If EAR stays 0, make sure your face is clearly visible.</p>
-                </div>
-            </div>
-
-            <div id="instructions-menu" class="modal hidden">
-                <div class="modal-content">
-                    <h1>How to Play</h1>
-                    <ul class="instruction-list">
-                        <li><strong>Blink</strong> both eyes to invert gravity.</li>
-                        <li><strong>Right wink</strong> to shoot cyan bullets.</li>
-                        <li>Avoid the <strong>Red Pillars</strong>.</li>
-                        <li>Shoot the <strong>Orange Enemies</strong> for bonus points!</li>
-                        <li>Survive as long as possible.</li>
-                    </ul>
-                    <button id="start-game">Start Game</button>
-                </div>
-            </div>
-
-            <div id="game-over-menu" class="modal hidden">
-                <div class="modal-content">
-                    <h1>GAME OVER</h1>
-                    <p>Final Score: <span id="final-score">0</span></p>
-                    <button id="restart-game">Try Again</button>
-                </div>
-            </div>
-
+            <!-- Controls panel -->
             <div id="controls">
-                <div class="control-group">
-                    <label for="sensitivity-slider">Blink Sensitivity</label>
+                <div class="control-row">
+                    <label class="ctrl-label" for="sensitivity-slider">
+                        👁 Sensitivity
+                    </label>
                     <input type="range" id="sensitivity-slider" min="0.1" max="0.5" step="0.01" value="0.25">
                 </div>
-                <div class="control-group">
-                    <label>
-                        <input type="checkbox" id="toggle-landmarks" checked> Show Landmarks
+                <div class="control-row">
+                    <label class="ctrl-label toggle-label" for="toggle-landmarks">
+                        <input type="checkbox" id="toggle-landmarks" checked>
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                        Landmarks
                     </label>
+                </div>
+            </div>
+
+            <!-- ===== CALIBRATION MODAL ===== -->
+            <div id="calibration-menu" class="modal">
+                <div class="modal-content glass">
+                    <div class="modal-badge">🎮 SETUP</div>
+                    <h1>GravityFlip</h1>
+                    <p class="modal-sub">A hands-free, blink-powered survival game</p>
+
+                    <div class="how-grid">
+                        <div class="how-card">
+                            <div class="how-icon">😑</div>
+                            <div class="how-text"><strong>Blink both eyes</strong><br>Flip gravity</div>
+                        </div>
+                        <div class="how-card">
+                            <div class="how-icon">😉</div>
+                            <div class="how-text"><strong>Right wink</strong><br>Shoot bullet</div>
+                        </div>
+                        <div class="how-card" style="grid-column: span 2;">
+                            <div class="how-icon">😒</div>
+                            <div class="how-text"><strong>Left wink</strong><br>Speed boost (2.5s)</div>
+                        </div>
+                    </div>
+
+                    <p class="calib-instruction">Grant camera access then hit <em>Start Calibration</em> and blink
+                        naturally 5 times.</p>
+
+                    <div class="progress-bar">
+                        <div id="calibration-progress" class="progress"></div>
+                        <span id="calib-count">0 / 5</span>
+                    </div>
+
+                    <p id="calibration-status" class="status-text">Initializing camera…</p>
+                    <button id="start-calibration" disabled>Wait for Camera</button>
+                </div>
+            </div>
+
+            <!-- ===== INSTRUCTIONS MODAL ===== -->
+            <div id="instructions-menu" class="modal hidden">
+                <div class="modal-content glass">
+                    <div class="modal-badge">👾 HOW TO PLAY</div>
+                    <h1>You're calibrated!</h1>
+                    <ul class="instruction-list">
+                        <li><span class="li-icon">😑</span> <strong>Blink both</strong> → flip gravity</li>
+                        <li><span class="li-icon">😉</span> <strong>Right wink</strong> → fire bullet</li>
+                        <li><span class="li-icon">😒</span> <strong>Left wink</strong> → speed boost (2.5s)</li>
+                        <li><span class="li-icon">🟥</span> Dodge <strong>Red Pillars</strong></li>
+                        <li><span class="li-icon">🟠</span> Shoot <strong>Orange Enemies</strong> for +15 pts</li>
+                    </ul>
+                    <button id="start-game">🚀 Start Game</button>
+                </div>
+            </div>
+
+            <!-- ===== GAME OVER MODAL ===== -->
+            <div id="game-over-menu" class="modal hidden">
+                <div class="modal-content glass">
+                    <div class="modal-badge">💀 GAME OVER</div>
+                    <h1>You crashed!</h1>
+                    <div class="score-big">
+                        <span class="score-label">Final Score</span>
+                        <span id="final-score" class="score-number">0</span>
+                    </div>
+                    <button id="restart-game">🔄 Try Again</button>
                 </div>
             </div>
         </div>
